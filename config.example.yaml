@@ -1,0 +1,88 @@
+# ============================================================
+# XBot ayar dosyası (örnek)
+# Bu dosyayı "config.yaml" adıyla kopyalayıp kendine göre düzenle.
+# Buraya ASLA şifre, token, çerez vb. yazma. Oturum sadece
+# tarayıcı profili klasöründe tutulur (paths.profile_dir).
+# ============================================================
+
+# Taranacak arama kelimeleri (X arama çubuğuna yazdığın şeyler)
+search_queries:
+  - "Okan Buruk"
+  - "Galatasaray"
+
+# "Hedefli mod" için isim parçaları. Küfür + bu isimlerden biri
+# aynı tweette geçerse karar HIGH'a yükselir.
+target_names:
+  - "okan"
+  - "buruk"
+
+# dry-run: hiçbir şeyi engellemez, sadece raporlar (VARSAYILAN)
+# auto: HIGH kararlıları engeller, SUSPECT'leri rapora yazar
+mode: dry-run
+
+# Sadece son kaç dakikadaki tweetler işlenecek
+time_window_minutes: 60
+
+# Engelleme üst sınırları (güvenlik freni)
+limits:
+  per_hour: 10
+  per_day: 40
+
+# Rastgele bekleme aralıkları (saniye) - [en az, en fazla]
+delays:
+  between_actions: [8, 25]
+  between_scrolls: [2, 5]
+
+# İlk çalıştırmalarda false (tarayıcı görünür) kalsın
+headless: false
+
+# Her arama için en fazla kaç kez aşağı kaydırılacak
+max_scrolls_per_query: 15
+
+# ---- Karar (verdict) kuralları ----
+detection:
+  # true olursa: hedef isim geçmeyen tweetler asla HIGH olmaz
+  high_requires_target: false
+  # Belirsiz ifade ("amk" gibi) + hedef isim -> "high" | "suspect"
+  ambiguous_with_target: high
+  # Hafif hakaret ("salak" gibi) + hedef isim -> "high" | "suspect"
+  mild_with_target: high
+  # Sevinç/olumlu bağlam kelimesi varsa belirsiz eşleşmeleri SUSPECT'e düşür
+  positive_context_guard: true
+  # Kelimeleri birleştirerek arama (ör. "s i k t i r") için en az kök uzunluğu
+  min_root_length_for_glue: 6
+
+# ---- Tarayıcı ----
+browser:
+  timeout_seconds: 30
+  locale: "tr-TR"
+  channel: ""        # "" = Playwright'in Chromium'u, "chrome" veya "msedge" de olabilir
+
+# ---- Bildirimler (hata olursa haber ver) ----
+notifications:
+  desktop: true      # masaüstü uyarısı
+  error_file: true   # logs/SON_HATA.txt dosyasına yaz
+
+# Kendi kullanıcı adın (sync-whitelist ve profil adresleri için).
+# Boş bırakırsan program giriş yapılmış hesaptan otomatik bulmaya çalışır.
+account_handle: ""
+
+# ---- Dosya yolları (config.yaml'ın bulunduğu klasöre göre) ----
+paths:
+  profile_dir: .profile          # Playwright kalıcı profili (gizli tut!)
+  db_path: data/xbot.sqlite3
+  log_dir: logs
+  screenshot_dir: logs/screenshots
+  report_dir: reports
+
+files:
+  profanity: data/profanity.txt
+  allowlist_words: data/allowlist_words.txt
+  allowlist_phrases: data/allowlist_phrases.txt
+  positive_context: data/positive_context.txt
+  whitelist: data/whitelist.txt
+
+logging:
+  level: INFO
+  # false yaparsan tweet metinleri loglara yazılmaz (sadece id/kullanıcı)
+  log_tweet_text: true

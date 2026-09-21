@@ -1,0 +1,34 @@
+# ============================================================
+# OLUMLU / SEVİNÇ BAĞLAMI KELİMELERİ
+# Bu kelimelerden biri tweette varsa BELİRSİZ (ambiguous)
+# eşleşmeler HIGH'a yükseltilmez, SUSPECT'te bırakılır.
+# Örnek: "amk gol geldi" -> engellenmez, rapora yazılır.
+# (config.yaml -> detection.positive_context_guard: false ile kapatılır)
+# ============================================================
+gol
+asist
+şampiyon
+kupa
+helal
+bravo
+tebrik
+tebrikler
+kral
+efsane
+harika
+muhteşem
+mükemmel
+süper
+maşallah
+koçum
+aşk
+seviyorum
+gurur
+zafer
+galibiyet
+kazandık
+delirdim
+çıldırdım
+kutlu
+hayran
+alkış

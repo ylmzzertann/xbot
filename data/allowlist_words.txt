@@ -1,0 +1,60 @@
+# ============================================================
+# MASUM KELİME İSTİSNA LİSTESİ (yanlış pozitif önleyici)
+# Bir küfür kökü BU LİSTEDEKİ bir kelimenin içinde kalıyorsa
+# o eşleşme sayılmaz. Örnek: "götür" kelimesi "göt" kökünü kapsar,
+# bu yüzden "seni maça götürdüm" temiz kabul edilir.
+#
+# Tek kelime yaz (ek almış hallerini kapsayacak kadar kısa tut:
+# "götür" yazmak "götürdü, götürecek, götürülen" hepsini kapsar).
+# ============================================================
+
+# göt kökü
+götür
+gotur
+gotik
+bogota
+argo
+
+# am / amına kökü
+adamına
+damına
+laminat
+laminasyon
+amino
+ampul
+amatör
+
+# s.k kökü (ı/i ayrımı sayesinde çoğu zaten eşleşmez,
+# yine de güvenlik için)
+sıkıntı
+sikinti
+sıkış
+sıkıl
+sıkıcı
+klasik
+psikoloji
+psikolojik
+psikiyatri
+aşık
+ışık
+müzik
+fizik
+
+# piç kökü
+kapıcı
+kapici
+yapıcı
+yapici
+
+# diğer
+malzeme
+maliyet
+malatya
+malum
+italya
+iteri
+itibar
+itiraf
+itiraz
+ithal
+mallorca

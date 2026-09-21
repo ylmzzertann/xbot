@@ -1,0 +1,6 @@
+# ============================================================
+# BEYAZ LİSTE - BU HESAPLAR HİÇBİR KOŞULDA ENGELLENMEZ
+# Her satıra bir kullanıcı adı yaz (@ işareti opsiyonel).
+# Aşama 3'te engelleme aksiyonu bu listeyi zorunlu olarak kontrol eder.
+# "sync-whitelist" komutu takip ettiklerini buraya ekleyebilir.
+# ============================================================

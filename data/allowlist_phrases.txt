@@ -1,0 +1,28 @@
+# ============================================================
+# MASUM KALIP (ÇOK KELİMELİ İSTİSNA) LİSTESİ
+# Burada yazan kalıplardan biri tweette geçiyorsa, o kalıbın içinde
+# kalan kökler eşleşme saymaz.
+# Örnek: "eşek arısı" kalıbı "eşek" kökünü içerir; "eşek arısı soktu"
+# tweetinde "eşek" kökü yok sayılır.
+# Boşluklar, noktalama ve büyük/küçük harf önemsizdir.
+# ============================================================
+eşek arısı
+eşek şakası
+kaşar peyniri
+alçak basınç
+alçak gönüllü
+domuz gribi
+domuz eti
+maymun iştahlı
+mal sahibi
+mal bildirimi
+mal müdürlüğü
+hayvan gibi
+hayvan hakları
+hayvansever
+köpek balığı
+köpek maması
+ayı yavrusu
+kutup ayısı
+bok böceği
+piç kurusu değil

@@ -1,0 +1,134 @@
+# ============================================================
+# KÜFÜR / HAKARET KÖK LİSTESİ
+# Bu dosyayı serbestçe düzenleyebilirsin. Program her çalıştığında
+# yeniden okur. Satır formatı:
+#
+#     kök | bayrak, bayrak, ...
+#
+# Bayraklar:
+#   strong     : Açık ve net küfür/hakaret (VARSAYILAN). Tek başına HIGH.
+#   mild       : Hafif hakaret. Tek başına SUSPECT; hedef isimle birlikte HIGH.
+#   ambiguous  : Belirsiz, sevinç/şaka olabilir. Tek başına SUSPECT.
+#   exact      : Sadece tam kelime olarak eşleşir (kelime içinde geçerse sayılmaz).
+#   keep_i     : ı/i harfleri ayrı tutulur ("sıkıntı" ile "sikinti" karışmasın).
+#
+# Notlar:
+#   - Küçük/büyük harf, Türkçe karakter, tekrar eden harfler ("amkkk"),
+#     araya konan nokta/yıldız ("a.m.k", "s*k") ve rakamlar ("s1k")
+#     program tarafından otomatik olarak normalize edilir. Burada
+#     kökleri normal yazımıyla yazman yeterli.
+#   - Birden fazla kelimeden oluşan kökler ("amına koyayım") boşluklar
+#     silinerek aranır.
+#   - Yanlış pozitif olursa: ya köke "exact"/"keep_i" ekle ya da masum
+#     kelimeyi data/allowlist_words.txt dosyasına yaz.
+# ============================================================
+
+# ---------- s.k kökü (ı/i ayrımı korunur) ----------
+sik | strong, exact, keep_i
+siktir | strong, keep_i
+sıktır | strong, keep_i
+sikeyim | strong, keep_i
+sikeym | strong, keep_i
+sikiyim | strong, keep_i
+sikerim | strong, keep_i
+sikece | strong, keep_i
+siktim | strong, keep_i
+sikti | strong, keep_i
+sikik | strong, keep_i
+sikim | strong, keep_i
+sikmek | strong, keep_i
+sikiş | strong, keep_i
+sikko | strong, keep_i
+sokayım | mild
+sokarım | mild
+
+# ---------- am kökü ----------
+amına | strong, exact
+amına koyayım | strong
+amına koyim | strong
+amına koyum | strong
+amına goyim | strong
+amına kodum | strong
+amına koduğum | strong
+amına sıçayım | strong
+amcık | strong
+amcığ | strong
+amk | ambiguous, exact
+amq | ambiguous, exact
+awk | ambiguous, exact
+mk | ambiguous, exact
+aq | ambiguous, exact
+sg | ambiguous, exact
+
+# ---------- klasik küfürler ----------
+orospu | strong
+oruspu | strong
+orosbu | strong
+oç | strong, exact
+kahpe | strong
+kaltak | strong
+yavşak | strong
+pezevenk | strong
+pezeveng | strong
+gavat | strong
+deyyus | strong
+dümbük | strong
+kancık | strong
+sürtük | strong
+puşt | strong
+ibne | strong
+nonoş | mild
+yarrak | strong
+göt | strong
+götlek | strong
+götveren | strong
+göt oğlanı | strong
+şerefsiz | strong
+namussuz | strong
+soysuz | mild
+karaktersiz | mild
+ahlaksız | mild
+onursuz | mild
+terbiyesiz | mild
+piç | strong, exact
+piçlik | strong
+piç kurusu | strong
+şıllık | mild
+fahişe | mild
+maganda | mild
+kıro | mild
+
+# ---------- hafif hakaretler ----------
+salak | mild
+aptal | mild
+geri zekalı | mild
+gerizekalı | mild
+dangalak | mild
+dallama | mild
+beyinsiz | mild
+şapşal | mild
+öküz | mild
+domuz | mild
+sapık | mild
+ucube | mild
+zibidi | mild
+pislik | mild
+gebersin | mild
+boktan | mild
+bok | mild, exact
+
+# ---------- belirsizler (tek başına engellenmez) ----------
+# Not: "rezil", "satılmış", "hain", "it", "hıyar" gibi bağlama cok bağlı
+# kelimeler bilincli olarak eklenmedi (cok fazla şupheli uretiyorlar).
+# İstersen buraya "ambiguous" olarak ekleyebilirsin.
+eşek | ambiguous
+hayvan | ambiguous
+maymun | ambiguous
+köpek | ambiguous
+manyak | ambiguous
+psikopat | ambiguous
+mal | ambiguous, exact
+ayı | ambiguous, exact
+kaşar | ambiguous
+alçak | ambiguous
+çingene | ambiguous

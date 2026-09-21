@@ -1,0 +1,22 @@
+[project]
+name = "xbot"
+version = "0.4.0"
+description = "X (Twitter) uzerinde kufur/hakaret tespiti ve engelleme botu (kisisel kullanim)"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0", "typer>=0.12", "rich>=13.0", "playwright>=1.44"]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.44"]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["xbot", "xbot.detector"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning"]

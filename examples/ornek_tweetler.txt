@@ -1,0 +1,40 @@
+# Bu dosya "python -m xbot check-file examples/ornek_tweetler.txt" ile denemek için.
+# Her satır bir tweet sayılır. "#" ile başlayan satırlar yorumdur.
+# ---- TEMİZ çıkması gerekenler ----
+Okan Buruk bugün çok iyi bir taktik kurdu
+sıkıntı yok kardeşim, hallederiz
+sık sık maça gidiyorum
+klasik bir Galatasaray maçı oldu
+psikolojik üstünlük bizde
+aşık oldum bu takıma
+seni maça götürdüm, hatırlasana
+adamına göre oynamak lazım
+yapıcı eleştiri yapıyorum
+eşek arısı soktu
+kaşar peyniri aldım
+hayvan gibi oynadı maşallah
+alçak basınç geliyor
+2-0 kazandık, harika
+hakem kararları tartışılır
+# ---- ŞÜPHELİ çıkması gerekenler (engellenmez, rapora yazılır) ----
+amk gol
+amkkkk ne gol ya
+a.m.k
+aq ne oldu böyle
+hoca salak
+geri zekalı bir taktik
+manyak bir gol attı
+okan buruk amk kral adam ya
+# ---- YÜKSEK çıkması gerekenler (--auto modunda engellenir) ----
+siktir git buradan
+s1kt1r git
+s*ktir
+s i k t i r
+orospu çocuğu
+o r o s p u
+amına koyayım
+yavşak herif
+şerefsiz Okan Buruk
+göt herif
+Okan Buruk salak
+okan buruk amk

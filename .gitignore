@@ -1,0 +1,14 @@
+# Tarayici profili: OTURUM BILGISI ICERIR, ASLA PAYLASILMAZ / COMMIT EDILMEZ
+.profile/
+profile/
+*.sqlite3
+*.db
+logs/
+*.lock
+reports/
+config.yaml
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
