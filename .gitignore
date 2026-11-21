@@ -12,3 +12,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+# Engellenenlerin tweetleri: BASKALARININ YAZDIKLARI, paylasma
+kayitlar/
+*.sqlite3-wal
+*.sqlite3-shm

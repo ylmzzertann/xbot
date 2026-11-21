@@ -39,10 +39,12 @@ class FakeUi:
 
     def __init__(self, *, verify: bool = True) -> None:
         self.steps: list[str] = []
+        self.urls: list[str | None] = []
         self.verify = verify
 
-    def open_tweet_menu(self, tweet_id: str) -> None:
+    def open_tweet_menu(self, tweet_id: str, url: str | None = None) -> None:
         self.steps.append(f"menu:{tweet_id}")
+        self.urls.append(url)
 
     def click_block(self) -> None:
         self.steps.append("engelle")
@@ -62,12 +64,14 @@ class FakeStorage:
     def __init__(self, *, blocked: set[str] | None = None) -> None:
         self.blocked = {b.lower() for b in (blocked or set())}
         self.records: list[tuple[Tweet, str]] = []
+        self.rules: list[str | None] = []
 
     def is_blocked(self, username: str) -> bool:
         return username.lower() in self.blocked
 
-    def record_block(self, tweet, decision, *, mode="auto", note="") -> int:
+    def record_block(self, tweet, decision, *, mode="auto", note="", rules=None) -> int:
         self.records.append((tweet, mode))
+        self.rules.append(rules)
         return len(self.records)
 
 

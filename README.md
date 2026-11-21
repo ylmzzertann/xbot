@@ -28,7 +28,8 @@ senin yerine arayüzde geziniyor.
 5. [Karar mantığı](#karar-mantığı)
 6. [Kelime listelerini düzenleme](#kelime-listelerini-düzenleme-data)
 7. [Zamanlanmış görev (ben yokken)](#zamanlanmış-görev-ben-yokken)
-8. [Raporlar ve yanlış engellemeyi geri alma](#raporlar-ve-yanlış-engellemeyi-geri-alma)
+8. [Engellenenlerin tweet dosyası](#engellenenlerin-tweet-dosyası) ·
+   [Raporlar ve yanlış engellemeyi geri alma](#raporlar-ve-yanlış-engellemeyi-geri-alma)
 9. [Güvenlik kuralları](#güvenlik-kuralları-kodda-uygulanıyor)
 10. [Testler](#testler)
 11. [Sorun giderme](#sorun-giderme)
@@ -139,6 +140,58 @@ Faydalı seçenekler:
 | `--gorunur` | Tarayıcıyı görünür açar |
 | `--rapor` | Tur sonunda HTML + CSV rapor üretir |
 
+### `phrase` — yazdığın kelime/cümleyle engelle
+
+Her çalıştırmada **o an ne yazarsan** onu arar. Engellemeden önce bulunanları
+gösterir; engelleme ancak sen onaylayınca başlar.
+
+```bash
+python -m xbot phrase
+```
+
+```
+Engellemek istediğin kelime ya da cümleyi yaz > okan istifa
+
+          'okan istifa' — son 60 dakikada bulunanlar
+ #  Hesap      Yazdığı                        Zaman             Küfür    Durum
+ 1  @kizgin1   Okan istifa artık yeter        21.09.2026 14:03  TEMİZ    engellenecek
+ 2  @kizgin2   OKAN İSTİFA!!! siktir git      21.09.2026 13:58  YÜKSEK   engellenecek
+               (+1 tweet daha)
+ 3  @dostum    okan istifa etsin bence        21.09.2026 13:40  TEMİZ    beyaz listede (atlanır)
+4 tweet, 3 hesap bulundu → 2 hesap engellenecek | 1 beyaz listede
+
+e = hepsini engelle, ç = bazılarını çıkar, v = vazgeç > ç
+Çıkarılacak numaralar (ör: 2,5,7-9) > 1
+Çıkarılanlar: 1 → engellenecek hesap: 1
+e = hepsini engelle, ç = bazılarını çıkar, v = vazgeç > e
+
+Engellenecek hesaplar: @kizgin2
+1 hesap ENGELLENECEK. Başlamak için evet yaz > evet
+[1/1] @kizgin2 engelleniyor...
+   ✓ engellendi
+```
+
+* İfadeyi komutla birlikte de verebilirsin: `python -m xbot phrase "okan istifa"`
+* Yazım oyunları da yakalanır: "OKAN İSTİFA", "okan istifaaa", "#OkanIstifa",
+  "o.k.a.n istifa".
+* Tek kelimeler varsayılan olarak kelime içinde de aranır ("hakem" →
+  "hakemler"). Sadece tam kelime için `--tam-kelime`.
+* **Son onay için mutlaka `evet` yazılmalı**; başka her cevap iptal sayılır.
+* Beyaz listedekiler, zaten engelliler ve kendi hesabın listede görünür ama
+  atlanır. "Küfür" sütunu, tweetin normal küfür dedektörüne göre durumunu
+  bilgi olarak gösterir.
+* Limitler burada da geçerli: onayladığın hesap sayısı kalan limitten fazlaysa,
+  fazlası `review` listesine eklenir; limit açılınca oradan engellersin.
+* Tweet engelleme anında silinmişse o hesap atlanır, kalanlara devam edilir.
+
+| Seçenek | Ne yapar |
+|---|---|
+| `--dakika 180` | Zaman penceresi (varsayılan config'teki 60) |
+| `--tam-kelime` | Tek kelimeyi sadece tam kelime olarak ara |
+| `--kaydirma 30` | Daha çok sonuç için daha fazla kaydır |
+| `--sadece-goster` | Sadece listele, hiçbir şey sorma/engelleme |
+| `--gorunur` / `--headless` | Tarayıcı görünür mü gizli mi |
+
 ### `review` — şüphelileri tek tek incele
 
 ```bash
@@ -158,6 +211,7 @@ Her şüpheli tweet için: `e` engelle, `a` atla, `t` temizle (bir daha sorma),
 | `config-show` | Ayarları doğrular ve gösterir |
 | `doctor` | Kurulum kontrolü (Python, Playwright, Chromium, listeler, oturum) |
 | `list-blocked` | Engellenenleri kanıtlarıyla listeler |
+| `blocked-tweets` / `blocked-tweets --ac` | Engellenenlerin yazdıklarını gösterir (dosyayı açar) |
 | `mark-unblocked <#>` | X'te engeli kaldırdığın kaydı işaretler |
 | `stats` | Özet istatistikler + limit durumu |
 | `report --ac` | HTML + CSV rapor üretir (ve açar) |
@@ -317,6 +371,35 @@ crontab -e
 
 ---
 
+## Engellenenlerin tweet dosyası
+
+Engellenen her hesabın yazdıkları tek bir dosyada **birikir** (eski kayıtlar
+silinmez):
+
+```
+kayitlar/engellenen_tweetler.csv
+```
+
+* Hangi yoldan engellenirse engellensin (`phrase`, `run --auto`, `review`)
+  dosyaya yazılır.
+* Sütunlar: kayıt zamanı, hesap, görünen ad, tweet id, **tweet metni**, tweet
+  linki, tweet zamanı, sebep (ör. `ifade: "okan istifa"` ya da `siktir`), mod.
+* `phrase` ile aynı hesabın birden fazla tweeti bulunduysa hepsi yazılır.
+* Excel'de çift tıklayınca doğru açılır (UTF-8 + `;` ayırıcı); satır içi
+  alt satırlar ve noktalı virgüller korunur.
+* Yol `config.yaml` → `paths.blocked_tweets` ile değiştirilebilir.
+* Dosyada **başkalarının yazdıkları** olduğu için `.gitignore` içindedir.
+
+```bash
+python -m xbot blocked-tweets
+```
+
+```bash
+python -m xbot blocked-tweets --ac
+```
+
+---
+
 ## Raporlar ve yanlış engellemeyi geri alma
 
 ```bash
@@ -372,7 +455,7 @@ tarayıcı profil klasöründedir.
 python -m pytest -q
 ```
 
-454 test + 1 atlanan (Playwright yoksa tarayıcı testleri de atlanır). Öne çıkanlar:
+538 test + 1 atlanan (Playwright yoksa tarayıcı testleri de atlanır). Öne çıkanlar:
 
 * **Yanlış pozitif korpusu** ([tests/test_detection.py](tests/test_detection.py)):
   "sıkıntı yok", "klasik maç", "psikolojik üstünlük", "aşık oldum", "seni maça
@@ -448,6 +531,8 @@ XBot/
 │   ├── storage.py            # SQLite kayıtlar
 │   ├── runner.py             # tur yönetimi
 │   ├── report.py             # CSV + HTML rapor
+│   ├── phrase_hunt.py        # "phrase": gruplama, numara seçimi, limit planı
+│   ├── evidence.py           # engellenenlerin tweet dosyası (CSV)
 │   ├── notify.py             # masaüstü bildirimi
 │   ├── logging_setup.py
 │   └── detector/
@@ -457,8 +542,9 @@ XBot/
 │       ├── profanity.py      # kelime listesi tabanlı dedektör
 │       ├── target.py         # hedef isim dedektörü
 │       ├── context.py        # olumlu bağlam dedektörü
+│       ├── phrase.py         # kullanıcının yazdığı ifadeyi arayan dedektör
 │       └── engine.py         # kararı birleştiren motor
-└── tests/                    # 454 test
+└── tests/                    # 538 test
 ```
 
 ### Sonraki adımlar için mimari hazır
@@ -519,6 +605,21 @@ Belirsiz noktalarda yapılan makul varsayımlar:
     yedek seçiciler + yerel taklit sayfa üzerinde gerçek tarayıcı testleri +
     `check-selectors` komutu. İlk kurulumda `check-selectors` çalıştırmak senin
     adımın.
-14. **CLI komut ve seçenek adları İngilizce** (spesifikasyondaki gibi), ekrana
+15. **`phrase` araması:** ifade X'te aranır (çok kelimeliyse tırnak içinde,
+    tam ifade olarak), sonra her tweet programın kendi Türkçe normalizasyonuyla
+    **yeniden kontrol edilir**; X'in gevşek sonuçları (kelimeler ayrı yerlerde,
+    profil adında vb.) listeye girmez.
+16. **Hesap başına tek engelleme:** aynı hesabın birden fazla tweeti bulunursa
+    hesap bir kez engellenir, eşleşen tweetlerinin hepsi dosyaya yazılır.
+17. **Dosyaya yazılan "yazdıkları":** taramada bulunan ve engellemeye sebep olan
+    tweetlerdir. Hesabın profilindeki tüm tweetler toplanmaz (daha çok istek ve
+    daha çok kişisel veri demek olurdu).
+18. **`phrase` de limitlere tabidir** (saatlik/günlük). Onaylanıp limite
+    takılan hesaplar kaybolmaz, `review` listesine eklenir.
+19. **Tweet sayfada görünmüyorsa** (X aşağı kaydırılınca eski tweetleri sayfadan
+    siler) program tweetin kendi sayfasına gider. Tweet o arada silinmişse
+    sadece o hesap atlanır; tüm tur durmaz.
+
+20. **CLI komut ve seçenek adları İngilizce** (spesifikasyondaki gibi), ekrana
     çıkan her şey Türkçe. Kod, değişken ve kod içi yorumlar İngilizce/ASCII;
     kullanıcıya görünen metinler tam Türkçe.

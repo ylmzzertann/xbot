@@ -15,7 +15,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from .actions import STATUS_ALREADY, STATUS_DRY_RUN, STATUS_LIMIT, STATUS_WHITELISTED
+from .actions import (
+    STATUS_ALREADY,
+    STATUS_DRY_RUN,
+    STATUS_LIMIT,
+    STATUS_NOT_FOUND,
+    STATUS_WHITELISTED,
+)
 from .errors import StopRun
 from .logging_setup import get_logger
 from .models import Decision, Level, Tweet
@@ -41,6 +47,7 @@ class RunSummary:
     skipped_whitelist: int = 0
     skipped_already: int = 0
     limited: int = 0
+    not_found: int = 0
     stopped: bool = False
     stop_reason: str = ""
     run_id: int | None = None
@@ -74,6 +81,8 @@ class RunSummary:
             out.append(f"Zaten engelli (atlandı): {self.skipped_already}")
         if self.limited:
             out.append(f"Limit dolduğu için şüpheliye yazıldı: {self.limited}")
+        if self.not_found:
+            out.append(f"Silinmiş/bulunamayan tweet (atlandı): {self.not_found}")
         if self.stopped:
             out.append(f"DURDU: {self.stop_reason}")
         return out
@@ -222,6 +231,8 @@ class Runner:
             summary.skipped_whitelist += 1
         elif outcome.status == STATUS_ALREADY:
             summary.skipped_already += 1
+        elif outcome.status == STATUS_NOT_FOUND:
+            summary.not_found += 1
 
     # --- bildirim ---
 

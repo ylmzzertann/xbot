@@ -96,8 +96,12 @@ TIME = "time"
 SOCIAL_CONTEXT = '[data-testid="socialContext"]'
 
 def tweet_by_id(tweet_id: str) -> str:
-    """Belirli bir tweetin kutusunu bulan secici (engelleme icin)."""
-    return f'article[data-testid="tweet"]:has(a[href*="/status/{tweet_id}"])'
+    """Belirli bir tweetin kutusunu bulan secici (engelleme icin).
+
+    Baglanti "/status/<id>" ile BITMELI ($=): boylece "/status/111" aranirken
+    "/status/1112345" yanlislikla eslesmez.
+    """
+    return f'article[data-testid="tweet"]:has(a[href$="/status/{tweet_id}"])'
 
 
 def tweet_by_id_fallback(tweet_id: str) -> str:

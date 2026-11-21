@@ -15,10 +15,13 @@ from . import selectors
 from .actions import BlockOutcome, Blocker, PlaywrightBlockUi
 from .browser import BrowserSession, find_first
 from .detector.engine import DecisionEngine
+from .detector.phrase import PhraseDetector
 from .errors import SafetyStop, StopRun
+from .evidence import BlockedTweetLog
 from .logging_setup import get_logger, setup_logging_from_config
 from .models import Decision, Tweet
 from .notify import notify, write_error_file
+from .phrase_hunt import PhraseSearchResult, match_tweets, search_query_for
 from .ratelimit import RateLimiter
 from .runner import Runner, RunSummary
 from .scraper import PlaywrightTweetSource, ScrapeResult, SearchScraper
@@ -52,6 +55,7 @@ class AppServices:
     whitelist: Whitelist
     limiter: RateLimiter
     notifier: object = None
+    tweet_log: BlockedTweetLog | None = None
 
     @property
     def lock_path(self) -> Path:
@@ -86,6 +90,7 @@ def build_services(config, *, console_log: bool = True) -> AppServices:
         whitelist=whitelist,
         limiter=limiter,
         notifier=make_notifier(config, logger),
+        tweet_log=BlockedTweetLog(config.paths.blocked_tweets),
     )
 
 
@@ -220,6 +225,7 @@ class BrowserApp:
             whitelist=self.services.whitelist,
             limiter=self.services.limiter,
             dry_run=dry_run,
+            tweet_log=self.services.tweet_log,
             logger=get_logger("actions"),
         )
 
@@ -248,12 +254,64 @@ class BrowserApp:
 
     # --- review: tek tweet engelleme ---
 
-    def block_single(self, tweet: Tweet, decision: Decision) -> BlockOutcome:
-        """Tweetin kendi sayfasina gidip hesabi engeller (review komutu icin)."""
-        self.session.goto(tweet.permalink, context=f"@{tweet.username} tweet sayfası")
-        self.ensure_logged_in()
+    def block_single(
+        self,
+        tweet: Tweet,
+        decision: Decision,
+        *,
+        mode: str = "review",
+        evidence_tweets=None,
+        reason: str | None = None,
+    ) -> BlockOutcome:
+        """Tek bir hesabi engeller (review ve phrase komutlari icin).
+
+        Tweet o an sayfada yoksa engelleme arayuzu tweetin kendi sayfasina gider;
+        tweet silinmisse hesap atlanir (program durmaz).
+        """
         blocker = self.make_blocker(dry_run=False)
-        return blocker.block(tweet, decision, mode="review")
+        return blocker.block(
+            tweet,
+            decision,
+            mode=mode,
+            evidence_tweets=evidence_tweets,
+            reason=reason,
+        )
+
+    # --- kullanicinin yazdigi ifadeyi arama ---
+
+    def find_phrase(
+        self,
+        phrase: str,
+        *,
+        minutes: int | None = None,
+        whole_word: bool = False,
+        max_scrolls: int | None = None,
+    ) -> PhraseSearchResult:
+        """Ifadeyi X'te arar; ifadeyi GERCEKTEN iceren tweetleri dondurur."""
+        window = TimeWindow.last_minutes(minutes or self.config.time_window_minutes)
+        query = search_query_for(phrase)
+        self.open_search(query)
+        source = PlaywrightTweetSource(
+            self.page,
+            session=self.session,
+            delays=self.services.limiter,
+            logger=get_logger("scraper"),
+        )
+        scraper = SearchScraper(
+            source,
+            max_scrolls=(
+                self.config.max_scrolls_per_query if max_scrolls is None else max_scrolls
+            ),
+            logger=get_logger("scraper"),
+        )
+        scrape = scraper.scrape(query, window)
+        detector = PhraseDetector([phrase], whole_word=whole_word)
+        return PhraseSearchResult(
+            phrase=phrase,
+            query=query,
+            matches=match_tweets(scrape.tweets, detector),
+            scrape=scrape,
+        )
 
     # --- secici dogrulama ---
 

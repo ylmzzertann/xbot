@@ -293,7 +293,9 @@ class Storage:
         *,
         mode: str = "auto",
         note: str = "",
+        rules: str | None = None,
     ) -> int:
+        rule_text = rules if rules is not None else (decision.rule_summary if decision else "")
         cursor = self.conn.execute(
             """
             INSERT INTO blocks
@@ -307,7 +309,7 @@ class Storage:
                 tweet.text,
                 tweet.url,
                 _iso(tweet.created_at),
-                decision.rule_summary if decision else "",
+                rule_text,
                 " | ".join(decision.reasons) if decision else "",
                 decision.level.name if decision else "",
                 mode,

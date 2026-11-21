@@ -74,6 +74,7 @@ paths:
   log_dir: logs
   screenshot_dir: logs/screenshots
   report_dir: reports
+  blocked_tweets: kayitlar/engellenen_tweetler.csv   # engellenenlerin tweetleri (Excel ile açılır)
 
 files:
   profanity: data/profanity.txt

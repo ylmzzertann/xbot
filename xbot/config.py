@@ -274,11 +274,19 @@ class Paths:
     log_dir: Path
     screenshot_dir: Path
     report_dir: Path
+    blocked_tweets: Path
 
     @classmethod
     def from_dict(cls, data: Any, base_dir: Path) -> "Paths":
         mapping = _get_mapping(data, "paths")
-        allowed = ("profile_dir", "db_path", "log_dir", "screenshot_dir", "report_dir")
+        allowed = (
+            "profile_dir",
+            "db_path",
+            "log_dir",
+            "screenshot_dir",
+            "report_dir",
+            "blocked_tweets",
+        )
         _check_unknown(mapping, allowed, "paths")
         defaults = {
             "profile_dir": ".profile",
@@ -286,6 +294,7 @@ class Paths:
             "log_dir": "logs",
             "screenshot_dir": "logs/screenshots",
             "report_dir": "reports",
+            "blocked_tweets": "kayitlar/engellenen_tweetler.csv",
         }
         resolved = {}
         for key, default in defaults.items():
@@ -301,6 +310,7 @@ class Paths:
             self.screenshot_dir,
             self.report_dir,
             self.db_path.parent,
+            self.blocked_tweets.parent,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 

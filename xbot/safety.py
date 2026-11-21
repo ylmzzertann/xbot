@@ -21,6 +21,7 @@ LOGIN = "login"
 CAPTCHA = "captcha"
 RESTRICTED = "restricted"
 ERROR = "error"
+NOT_FOUND = "not_found"  # silinmis tweet / olmayan sayfa: tek hesap atlanir
 
 #: Bu adres parcalari gorulurse oturum dusmus veya dogrulama isteniyor demektir
 LOGIN_URL_PARTS = (
@@ -86,8 +87,16 @@ ERROR_MARKERS = (
     "bir şeyler ters gitti",
     "try reloading",
     "yeniden yüklemeyi dene",
+)
+
+#: Tweet silinmis ya da sayfa yok. Program DURMAZ, sadece o hesap atlanir.
+NOT_FOUND_MARKERS = (
     "bu sayfa mevcut değil",
     "this page doesn't exist",
+    "this page doesn’t exist",
+    "bu gönderi mevcut değil",
+    "this post is unavailable",
+    "bu gönderi kullanılamıyor",
 )
 
 _MARKER_GROUPS = (
@@ -95,6 +104,7 @@ _MARKER_GROUPS = (
     (RESTRICTED, RESTRICTED_MARKERS),
     (LOGIN, LOGIN_MARKERS),
     (ERROR, ERROR_MARKERS),
+    (NOT_FOUND, NOT_FOUND_MARKERS),
 )
 
 _KIND_MESSAGES = {
@@ -102,6 +112,7 @@ _KIND_MESSAGES = {
     CAPTCHA: "CAPTCHA veya doğrulama ekranı görüldü. Program durdu; bunu ELLE çözmen gerekiyor.",
     RESTRICTED: "Hesap kısıtlaması/askıya alma uyarısı görüldü. Program durdu, hiçbir işlem yapılmadı.",
     ERROR: "X beklenmeyen bir hata sayfası gösterdi. Program durdu.",
+    NOT_FOUND: "Sayfa bulunamadı (tweet silinmiş olabilir).",
 }
 
 

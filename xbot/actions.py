@@ -14,12 +14,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from collections.abc import Sequence
+
 from . import selectors
-from .browser import require_first, wait_for_first
-from .errors import ActionFailed
+from .browser import find_first, require_first, wait_for_first
+from .errors import ActionFailed, SafetyStop
 from .logging_setup import get_logger
 from .models import Decision, Tweet
-from .safety import assert_safe
+from .safety import NOT_FOUND, assert_safe
 
 # --- sonuc durumlari ---
 STATUS_BLOCKED = "blocked"
@@ -28,6 +30,7 @@ STATUS_WHITELISTED = "whitelisted"
 STATUS_ALREADY = "already"
 STATUS_LIMIT = "limit"
 STATUS_SKIPPED = "skipped"
+STATUS_NOT_FOUND = "not-found"  # tweet silinmis: sadece bu hesap atlandi
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +55,7 @@ class BlockOutcome:
 class BlockUi(Protocol):
     """Engelleme icin gereken en kucuk arayuz."""
 
-    def open_tweet_menu(self, tweet_id: str) -> None: ...
+    def open_tweet_menu(self, tweet_id: str, url: str | None = None) -> None: ...
 
     def click_block(self) -> None: ...
 
@@ -94,8 +97,25 @@ class PlaywrightBlockUi:
                 detail += "\nKanıt: " + ", ".join(str(path) for path in evidence)
             raise ActionFailed(detail) from exc
 
-    def open_tweet_menu(self, tweet_id: str) -> None:
-        """Tweeti bulur, '...' dugmesine basar, menunun acildigini dogrular."""
+    def open_tweet_menu(self, tweet_id: str, url: str | None = None) -> None:
+        """Tweeti bulur, '...' dugmesine basar, menunun acildigini dogrular.
+
+        X zaman tunelini "sanallastirir": asagi kaydirildikca ustteki tweetler
+        sayfadan silinir. Tweet o an sayfada yoksa ve adresi biliniyorsa,
+        tweetin kendi sayfasina gidilir.
+        """
+        chain = selectors.tweet_chain_by_id(tweet_id)
+        if url and self.session is not None and find_first(self.page, chain) is None:
+            self.logger.info("Tweet sayfada görünmüyor, kendi sayfası açılıyor: %s", url)
+            self.session.goto(url, context="engellenecek tweetin sayfası")
+            wait_for_first(
+                self.page,
+                chain,
+                what=f"engellenecek tweet ({tweet_id})",
+                timeout_ms=self.timeout_ms,
+                session=self.session,
+                logger=self.logger,
+            )
         self._check_page("engelleme öncesi sayfa kontrolü")
         _selector, article = require_first(
             self.page,
@@ -199,6 +219,7 @@ class Blocker:
         whitelist,
         limiter,
         dry_run: bool = True,
+        tweet_log=None,
         logger=None,
     ) -> None:
         self.ui = ui
@@ -206,11 +227,25 @@ class Blocker:
         self.whitelist = whitelist
         self.limiter = limiter
         self.dry_run = dry_run
+        self.tweet_log = tweet_log  # engellenenlerin tweetlerini tutan dosya
         self.logger = logger or get_logger("actions")
 
-    def block(self, tweet: Tweet, decision: Decision, *, mode: str = "auto") -> BlockOutcome:
-        """Tek bir hesabi engeller (ya da neden engellemedigini soyler)."""
+    def block(
+        self,
+        tweet: Tweet,
+        decision: Decision,
+        *,
+        mode: str = "auto",
+        evidence_tweets: Sequence[Tweet] | None = None,
+        reason: str | None = None,
+    ) -> BlockOutcome:
+        """Tek bir hesabi engeller (ya da neden engellemedigini soyler).
+
+        evidence_tweets: dosyaya yazilacak tweetler (varsayilan: sadece bu tweet).
+        reason: kayitlarda gorunecek kural (varsayilan: kararin kurallari).
+        """
         username = tweet.username
+        rule_text = reason or decision.rule_summary or "-"
 
         if self.whitelist is not None and self.whitelist.contains(username):
             message = f"@{username} beyaz listede: engellenmedi."
@@ -233,21 +268,28 @@ class Blocker:
         if self.dry_run:
             message = (
                 f"[dry-run] @{username} ENGELLENİRDİ "
-                f"(kural: {decision.rule_summary or '-'}) {tweet.permalink}"
+                f"(kural: {rule_text}) {tweet.permalink}"
             )
             self.logger.info(message)
             return BlockOutcome(STATUS_DRY_RUN, username, tweet.tweet_id, message)
 
-        if self.ui is None:  # pragma: no cover - programlama hatasi
+        if self.ui is None:
             raise ActionFailed("Engelleme arayüzü yok (tarayıcı açılmamış).")
 
         self.logger.warning(
             "ENGELLENİYOR: @%s (kural: %s) %s",
             username,
-            decision.rule_summary or "-",
+            rule_text,
             tweet.permalink,
         )
-        self.ui.open_tweet_menu(tweet.tweet_id)
+        try:
+            self.ui.open_tweet_menu(tweet.tweet_id, url=tweet.permalink)
+        except SafetyStop as exc:
+            if exc.kind != NOT_FOUND:
+                raise
+            message = f"@{username}: tweet bulunamadı (silinmiş olabilir), atlandı."
+            self.logger.warning(message)
+            return BlockOutcome(STATUS_NOT_FOUND, username, tweet.tweet_id, message)
         self.ui.click_block()
         self.ui.confirm_block()
         if not self.ui.verify_blocked(username):
@@ -259,10 +301,21 @@ class Blocker:
 
         record_id = None
         if self.storage is not None:
-            record_id = self.storage.record_block(tweet, decision, mode=mode)
+            record_id = self.storage.record_block(
+                tweet, decision, mode=mode, rules=rule_text
+            )
         if self.limiter is not None:
             self.limiter.register_block()
-        message = f"@{username} engellendi (kural: {decision.rule_summary or '-'})."
+        if self.tweet_log is not None:
+            try:
+                self.tweet_log.append(
+                    list(evidence_tweets) if evidence_tweets else [tweet],
+                    reason=rule_text,
+                    mode=mode,
+                )
+            except OSError as exc:  # engelleme oldu; dosya yazilamadi diye durma
+                self.logger.error("Tweet dosyasına yazılamadı: %s", exc)
+        message = f"@{username} engellendi (kural: {rule_text})."
         self.logger.warning(message)
         if self.limiter is not None:
             self.limiter.wait_between_actions()

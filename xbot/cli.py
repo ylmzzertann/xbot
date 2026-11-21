@@ -34,13 +34,26 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from .actions import STATUS_LIMIT
 from .app import AppServices, BrowserApp, build_services
 from .config import MODE_AUTO, AppConfig, ConfigError, load_config
 from .detector.engine import DecisionEngine
+from .detector.phrase import is_short_phrase, validate_phrase
 from .errors import BrowserError, LockError, StopRun
+from .evidence import BlockedTweetLog
 from .lock import RunLock
 from .models import Decision, Level, Severity, Tweet
-from .report import ReportBuilder
+from .phrase_hunt import (
+    STATUS_ALREADY,
+    STATUS_SELF,
+    STATUS_TO_BLOCK,
+    STATUS_WHITELISTED,
+    Candidate,
+    build_candidates,
+    parse_numbers,
+    plan_blocks,
+)
+from .report import ReportBuilder, pretty_time
 from .storage import SUSPECT_BLOCKED, SUSPECT_DISMISSED, Storage
 from .wordlists import WordListError, load_profanity_entries, load_word_list
 
@@ -175,6 +188,14 @@ def _lock(services: AppServices) -> RunLock:
     except LockError as exc:
         console.print(Panel(str(exc), title="Zaten çalışıyor", border_style="yellow"))
         raise typer.Exit(code=EXIT_BUSY) from exc
+
+
+def _ask(prompt: str) -> str:
+    """Kullanicidan satir okur; girdi yoksa (zamanlanmis gorev) bos dondurur."""
+    try:
+        return console.input(prompt).strip()
+    except EOFError:
+        return ""
 
 
 def _open_file(path: Path) -> None:
@@ -440,6 +461,14 @@ def doctor_command() -> None:
     except Exception as exc:  # pragma: no cover
         add("Veritabanı", False, str(exc))
 
+    tweet_log = BlockedTweetLog(config.paths.blocked_tweets)
+    add(
+        "Engellenenlerin tweet dosyası",
+        True,
+        f"{tweet_log.path} ({tweet_log.count()} kayıt)"
+        if tweet_log.path.exists()
+        else f"{tweet_log.path} (ilk engellemede oluşur)",
+    )
     add(
         "Mod",
         True,
@@ -752,7 +781,9 @@ def review_command(
                 console.print("[dim]Tarayıcı açılıyor...[/dim]")
                 browser = BrowserApp(services, headless=headless)
                 browser.__enter__()
-            outcome = browser.block_single(tweet, decision)
+            outcome = browser.block_single(
+                tweet, decision, mode="review", reason=record.rules or None
+            )
             console.print(f"  → {outcome.message}")
             if outcome.blocked:
                 services.storage.set_suspect_status(record.tweet_id, SUSPECT_BLOCKED)
@@ -777,6 +808,314 @@ def review_command(
             f"[green]{dismissed} temizlendi[/green], {skipped} atlandı."
         )
         services.close()
+
+
+# --------------------------------------------------------------------------
+# phrase: kullanicinin yazdigi ifadeyi ara -> goster -> onayla -> engelle
+# --------------------------------------------------------------------------
+
+_STATUS_STYLE = {
+    STATUS_TO_BLOCK: "bold red",
+    STATUS_WHITELISTED: "green",
+    STATUS_ALREADY: "dim",
+    STATUS_SELF: "dim",
+}
+
+
+def _print_candidates(phrase: str, candidates: list[Candidate], minutes: int) -> None:
+    """Bulunan hesaplari numarali tablo halinde gosterir."""
+    table = Table(
+        title=f"'{phrase}' — son {minutes} dakikada bulunanlar",
+        show_lines=True,
+    )
+    table.add_column("#", justify="right", style="bold")
+    table.add_column("Hesap")
+    table.add_column("Yazdığı", overflow="fold", ratio=3)
+    table.add_column("Zaman", style="dim")
+    table.add_column("Küfür")
+    table.add_column("Durum")
+    for candidate in candidates:
+        first = candidate.first_tweet
+        text = first.text
+        if len(candidate.tweets) > 1:
+            text += f"\n(+{len(candidate.tweets) - 1} tweet daha)"
+        profanity = (
+            _level_text(candidate.profanity) if candidate.profanity is not None else Text("-")
+        )
+        table.add_row(
+            str(candidate.number),
+            f"@{candidate.username}",
+            text,
+            pretty_time(first.created_at.isoformat()) if first.created_at else "-",
+            profanity,
+            Text(candidate.status_label, style=_STATUS_STYLE.get(candidate.status, "")),
+        )
+    console.print(table)
+
+    counts = {status: 0 for status in _STATUS_STYLE}
+    for candidate in candidates:
+        counts[candidate.status] = counts.get(candidate.status, 0) + 1
+    tweet_total = sum(len(c.tweets) for c in candidates)
+    parts = [f"[bold red]{counts[STATUS_TO_BLOCK]} hesap engellenecek[/bold red]"]
+    if counts[STATUS_WHITELISTED]:
+        parts.append(f"{counts[STATUS_WHITELISTED]} beyaz listede")
+    if counts[STATUS_ALREADY]:
+        parts.append(f"{counts[STATUS_ALREADY]} zaten engelli")
+    if counts[STATUS_SELF]:
+        parts.append("1 senin hesabın")
+    console.print(
+        f"{tweet_total} tweet, {len(candidates)} hesap bulundu → " + " | ".join(parts)
+    )
+
+
+def _defer(services: AppServices, candidates: list[Candidate]) -> None:
+    """Engellenemeyen (limit/durma) hesaplari 'review' listesine yazar."""
+    for candidate in candidates:
+        services.storage.add_suspect(candidate.first_tweet, candidate.decision)
+
+
+@app.command("phrase")
+def phrase_command(
+    text: Annotated[
+        list[str] | None,
+        typer.Argument(help="Aranacak kelime/cümle (boş bırakırsan program sorar)."),
+    ] = None,
+    minutes: Annotated[
+        int | None,
+        typer.Option("--dakika", help="Zaman penceresi (varsayılan config'ten)."),
+    ] = None,
+    whole_word: Annotated[
+        bool,
+        typer.Option("--tam-kelime", help="Tek kelimeyi sadece tam kelime olarak ara."),
+    ] = False,
+    scrolls: Annotated[
+        int | None,
+        typer.Option("--kaydirma", help="En fazla kaç kez kaydırılsın."),
+    ] = None,
+    headless: Annotated[
+        bool | None,
+        typer.Option("--headless/--gorunur", help="Tarayıcı gizli mi açılsın?"),
+    ] = None,
+    list_only: Annotated[
+        bool,
+        typer.Option("--sadece-goster", help="Sadece listele, engelleme sorma."),
+    ] = False,
+) -> None:
+    """Yazdığın kelime/cümleyi arar, bulunanları gösterir, ONAYLARSAN engeller."""
+    config = _load_config()
+    raw_phrase = " ".join(text or []).strip()
+    if not raw_phrase:
+        raw_phrase = _ask("Engellemek istediğin kelime ya da cümleyi yaz > ")
+    try:
+        phrase = validate_phrase(raw_phrase)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=EXIT_USAGE) from exc
+    if is_short_phrase(phrase) and not whole_word:
+        console.print(
+            f"[yellow]Uyarı: '{phrase}' kısa bir ifade; başka kelimelerin içinde de "
+            "geçebilir. Sadece tam kelime için --tam-kelime kullan.[/yellow]"
+        )
+    window = minutes or config.time_window_minutes
+
+    services = _services(config)
+    lock = _lock(services)
+    browser: BrowserApp | None = None
+    run_id = services.storage.start_run(mode="phrase", queries=[phrase])
+    blocked_count = 0
+    pending: list[Candidate] = []
+    status_text = "ok"
+    try:
+        console.print(f"'{phrase}' aranıyor (son {window} dakika)... tarayıcı açılıyor.")
+        browser = BrowserApp(services, headless=headless)
+        browser.__enter__()
+        result = browser.find_phrase(
+            phrase, minutes=window, whole_word=whole_word, max_scrolls=scrolls
+        )
+        candidates = build_candidates(
+            result.matches,
+            whitelist=services.whitelist,
+            storage=services.storage,
+            own_handle=browser.detect_handle(),
+            engine=services.engine,
+        )
+        if not candidates:
+            seen = result.scrape.total_seen if result.scrape else 0
+            console.print(
+                f"[green]'{phrase}' içeren tweet bulunamadı[/green] "
+                f"({seen} tweet incelendi)."
+            )
+            return
+
+        _print_candidates(phrase, candidates, window)
+        if list_only:
+            return
+        if not any(candidate.will_block for candidate in candidates):
+            console.print("[green]Engellenecek hesap yok (hepsi atlanıyor).[/green]")
+            return
+
+        # --- 1. adim: liste onayi (istenirse bazilari cikarilir) ---
+        excluded: set[int] = set()
+        while True:
+            answer = _ask(
+                "\n[bold]e[/bold] = hepsini engelle, [bold]ç[/bold] = bazılarını çıkar, "
+                "[bold]v[/bold] = vazgeç > "
+            ).lower()
+            if answer in ("e", "evet", "hepsi"):
+                break
+            if answer in ("ç", "c", "çıkar", "cikar"):
+                numbers = _ask("Çıkarılacak numaralar (ör: 2,5,7-9) > ")
+                try:
+                    excluded |= parse_numbers(numbers, len(candidates))
+                except ValueError as exc:
+                    console.print(f"[red]{exc}[/red]")
+                    continue
+                left = [c for c in candidates if c.will_block and c.number not in excluded]
+                console.print(
+                    f"Çıkarılanlar: {', '.join(map(str, sorted(excluded))) or '-'} → "
+                    f"engellenecek hesap: {len(left)}"
+                )
+                if not left:
+                    console.print("[green]Engellenecek hesap kalmadı. Hiçbir şey yapılmadı.[/green]")
+                    return
+                continue
+            console.print("[green]Vazgeçildi. Hiçbir hesap engellenmedi.[/green]")
+            return
+
+        # --- 2. adim: limit kontrolu + son onay ---
+        limit = services.limiter.status()
+        limit_left = min(limit.left_hour, limit.left_day) if limit.allowed else 0
+        plan = plan_blocks(candidates, excluded=excluded, limit_left=limit_left)
+        if not plan.to_block:
+            console.print(
+                Panel(
+                    f"{limit.reason}\nŞu an engelleme yapılamıyor. Onaylanan "
+                    f"{len(plan.deferred)} hesap 'review' listesine eklendi; limit "
+                    "açılınca 'python -m xbot review' ile engelleyebilirsin.",
+                    title="Limit dolu",
+                    border_style="yellow",
+                )
+            )
+            _defer(services, plan.deferred)
+            return
+        if plan.deferred:
+            console.print(
+                f"[yellow]Limit ({limit.describe()}) nedeniyle şimdi {len(plan.to_block)} "
+                f"hesap engellenebilir; kalan {len(plan.deferred)} hesap 'review' "
+                "listesine eklenecek.[/yellow]"
+            )
+        names = ", ".join(f"@{c.username}" for c in plan.to_block)
+        console.print(f"\nEngellenecek hesaplar: {names}")
+        final = _ask(
+            f"[bold red]{len(plan.to_block)} hesap ENGELLENECEK.[/bold red] "
+            "Başlamak için [bold]evet[/bold] yaz > "
+        ).lower()
+        if final != "evet":
+            console.print("[green]Onay verilmedi. Hiçbir hesap engellenmedi.[/green]")
+            return
+
+        # --- 3. adim: engelleme ---
+        pending = list(plan.to_block)
+        _defer(services, plan.deferred)
+        total = len(plan.to_block)
+        for index, candidate in enumerate(plan.to_block, start=1):
+            console.print(f"[{index}/{total}] @{candidate.username} engelleniyor...")
+            outcome = browser.block_single(
+                candidate.first_tweet,
+                candidate.decision,
+                mode="phrase",
+                evidence_tweets=candidate.tweets,
+                reason=candidate.decision.rule_summary,
+            )
+            pending.remove(candidate)
+            if outcome.blocked:
+                blocked_count += 1
+                console.print("   [red]✓ engellendi[/red]")
+            else:
+                console.print(f"   [yellow]– {outcome.message}[/yellow]")
+                if outcome.status == STATUS_LIMIT:
+                    _defer(services, pending)
+                    pending = []
+                    console.print("[yellow]Limit doldu; kalanlar 'review' listesine eklendi.[/yellow]")
+                    break
+
+        console.print(
+            Panel(
+                f"{blocked_count} hesap engellendi.\n"
+                f"Yazdıkları şu dosyaya eklendi:\n  {config.paths.blocked_tweets}\n\n"
+                "Listeyi görmek için: python -m xbot blocked-tweets",
+                title="Bitti",
+                border_style="green",
+            )
+        )
+    except StopRun as exc:
+        status_text = "stopped"
+        if pending:
+            _defer(services, pending)
+            console.print(
+                f"[yellow]{blocked_count} hesap engellendi; kalan {len(pending)} hesap "
+                "'review' listesine eklendi.[/yellow]"
+            )
+        _handle_stop(exc)
+    except BrowserError as exc:
+        status_text = "stopped"
+        console.print(Panel(str(exc), title="Tarayıcı hatası", border_style="red"))
+        raise typer.Exit(code=EXIT_CONFIG) from exc
+    except KeyboardInterrupt:  # pragma: no cover - elle iptal
+        status_text = "stopped"
+        if pending:
+            _defer(services, pending)
+        console.print("\n[yellow]İptal edildi.[/yellow]")
+        raise typer.Exit(code=EXIT_STOPPED) from None
+    except typer.Exit:
+        raise
+    except Exception as exc:  # pragma: no cover - beklenmeyen hata
+        status_text = "stopped"
+        if pending:
+            _defer(services, pending)
+        _handle_unexpected(exc, services)
+    finally:
+        if browser is not None:
+            browser.__exit__(None, None, None)
+        services.storage.finish_run(run_id, blocked=blocked_count, status=status_text)
+        lock.release()
+        services.close()
+
+
+@app.command("blocked-tweets")
+def blocked_tweets_command(
+    limit: Annotated[int, typer.Option("--limit", help="Kaç kayıt gösterilsin.")] = 20,
+    open_after: Annotated[
+        bool, typer.Option("--ac", help="Dosyayı (Excel vb.) aç.")
+    ] = False,
+) -> None:
+    """Engellenen hesapların yazdıklarını (tweet dosyasını) gösterir."""
+    config = _load_config()
+    log = BlockedTweetLog(config.paths.blocked_tweets)
+    rows = log.read()
+    if not rows:
+        console.print(
+            f"[green]Henüz kayıt yok.[/green] Dosya ilk engellemede oluşur: {log.path}"
+        )
+        return
+    table = Table(title=f"Engellenenlerin yazdıkları (son {min(limit, len(rows))} / {len(rows)})")
+    table.add_column("Kayıt zamanı", style="dim")
+    table.add_column("Hesap")
+    table.add_column("Yazdığı", overflow="fold", ratio=3)
+    table.add_column("Sebep")
+    table.add_column("Mod", style="dim")
+    for row in list(reversed(rows))[:limit]:
+        table.add_row(
+            row.get("kayit_zamani", ""),
+            f"@{row.get('hesap', '')}",
+            row.get("tweet_metni", ""),
+            row.get("sebep", ""),
+            row.get("mod", ""),
+        )
+    console.print(table)
+    console.print(f"Dosya: {log.path}")
+    if open_after:
+        _open_file(log.path)
 
 
 @app.command("list-blocked")

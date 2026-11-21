@@ -120,6 +120,12 @@ def pages(tmp_path_factory) -> dict[str, str]:
                     "<body>Hesabınız kısıtlandı</body></html>"),
         ("bozuk", "<html lang='tr'><head><title>Arama / X</title></head>"
                   "<body><div data-testid='primaryColumn'>arayüz değişti</div></body></html>"),
+        ("durum", build_mock_html(
+            [{"user": "uzak_hesap", "id": "555", "text": "okan istifa etsin", "min": 3}]
+        )),
+        ("silinmis", "<html lang='tr'><head><title>X</title></head><body>"
+                     "Hmm...this page doesn't exist. Try searching for something else."
+                     "</body></html>"),
     ):
         path = directory / f"{name}.html"
         path.write_text(html, encoding="utf-8")
@@ -327,3 +333,56 @@ class TestBlockingRealDom:
         with pytest.raises((ActionFailed, SelectorNotFound)) as info:
             ui.click_block()
         assert "menü" in str(info.value).lower() or "engelle" in str(info.value).lower()
+
+
+# --------------------------------------------------------------------------
+# phrase ozelligi icin: tweet sayfada yoksa kendi sayfasina gitme
+# --------------------------------------------------------------------------
+
+
+class TestNavigationAndDeletedTweets:
+    def _blocker(self, session, config, storage, log):
+        return Blocker(
+            PlaywrightBlockUi(session.page, session=session, timeout_ms=5000),
+            storage=storage,
+            whitelist=Whitelist([]),
+            limiter=RateLimiter(config.limits, config.delays, storage=storage,
+                                sleeper=lambda _s: None),
+            dry_run=False,
+            tweet_log=log,
+        )
+
+    def test_goes_to_tweet_page_and_blocks(self, session, pages, config, tmp_path):
+        from xbot.detector.phrase import PhraseDetector
+        from xbot.evidence import BlockedTweetLog
+        from xbot.phrase_hunt import match_tweets
+
+        session.goto(pages["bos"])  # su anki sayfada bu tweet YOK
+        tw = Tweet("555", "uzak_hesap", "okan istifa etsin", created_at=NOW,
+                   url=pages["durum"])
+        decision = match_tweets([tw], PhraseDetector(["okan istifa"]))[0][1]
+        log = BlockedTweetLog(tmp_path / "tweetler.csv")
+        with Storage(tmp_path / "nav.sqlite3") as storage:
+            outcome = self._blocker(session, config, storage, log).block(
+                tw, decision, mode="phrase", evidence_tweets=[tw],
+                reason='ifade: "okan istifa"',
+            )
+            assert outcome.blocked is True
+            assert storage.is_blocked("uzak_hesap") is True
+        assert session.page.url == pages["durum"]
+        assert session.page.evaluate("window.__blocked") == ["uzak_hesap"]
+        rows = log.read()
+        assert rows[0]["hesap"] == "uzak_hesap"
+        assert rows[0]["tweet_metni"] == "okan istifa etsin"
+
+    def test_deleted_tweet_is_skipped_not_stopped(self, session, pages, config, tmp_path):
+        from xbot.actions import STATUS_NOT_FOUND
+
+        session.goto(pages["bos"])
+        tw = Tweet("666", "silen_hesap", "okan istifa", created_at=NOW,
+                   url=pages["silinmis"])
+        decision = Decision(tweet=tw, level=Level.HIGH)
+        with Storage(tmp_path / "silinen.sqlite3") as storage:
+            outcome = self._blocker(session, config, storage, None).block(tw, decision)
+            assert outcome.status == STATUS_NOT_FOUND
+            assert storage.is_blocked("silen_hesap") is False
